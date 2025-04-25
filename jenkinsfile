@@ -1,0 +1,63 @@
+pipeline{
+    agent any
+
+    environment {
+        JMETER_VERSION = "5.6.3" 
+        JMETER_HOME = "/opt/jmeter/apache-jmeter-${JMETER_VERSION}"
+
+        JTL_REPORT_FILE = "results/resuls.jtl" //JTL 생성 위치
+        HTML_REPORT_DIR = "results/report_output" // Report HTML생성위치
+
+    }
+
+    stages {
+        stage('Run Tests'){
+            steps{ //실행 내용
+                script{ //sh 리눅스 명령어 하겠다
+                    sh 'rm -rf results' //results 파일을 지운다!!
+                    sh 'rm -f results.jtl'
+                    sh 'rm -rf report_ouput'
+                    sh 'mkdir -p results'
+                    sh 'mkdir -p report_output'
+                    sh 'mkdir -p results/report_output'
+
+                    sh """
+                        echo "시작"
+                        ${env.JMETER_HOME}/bin/jmeter -n \\
+                        -t MyTestPlan.jmx \\
+                        -l ./results/results.jtl \\
+                        -e -o ./results/report_output
+                    """
+
+                }
+            }
+        }
+        stage('퍼포먼스 리포트'){
+            step{
+                perfReport(
+                    sourceDataFiles:"$(env.JTL_REPORT_FILE)",
+                    errorFailedThreshold : 1,
+                    errorUnstableThreshold : 0.5
+                )
+            }
+        }
+        stage('HTML Report'){
+            steps{
+                publishHTML(
+                    allowMissing: false,
+                    alwaysLinkToLastBuild: false,
+                    keepAll: false,
+                    reportDir: "${env.HTML_REPORT_DIR}",
+                    reportFiles: 'index.html',
+                    reportName: 'JMeter Performance Report'
+                )
+            }
+        }
+    }
+    post{
+        always{
+            echo 'Build finished.'
+            archiveArtifacts artifacts: "${env.HTML_REPORT_DIR}/**/*", allowEmptyArchive: true
+        }
+    }
+}
